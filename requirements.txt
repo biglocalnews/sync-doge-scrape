@@ -2,6 +2,5 @@ bln
 papermill
 ipykernel
 jupyter
-pyquery
 requests
 tqdm
