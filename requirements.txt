@@ -1,6 +1,4 @@
 bln
-papermill
-ipykernel
-jupyter
-requests
-tqdm
+dotenv
+# papermill
+# tqdm

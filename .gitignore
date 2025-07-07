@@ -1,2 +1,8 @@
-data/
+data/*
 .ipynb_checkpoints/
+venv
+__pycache__
+# Ignore all .env files
+.env.*
+# But don't ignore the example env files
+!.env.*.example
