@@ -17,41 +17,36 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
 def get_files_with_last_modified(
-    owner: str,
-    repo: str,
-    path: str,
-    ref: str = 'main',
-    token: Optional[str] = None
+    owner: str, repo: str, path: str, ref: str = "main", token: Optional[str] = None
 ) -> List[Dict[str, str]]:
     """
     Get files in GitHub dir along with their last commit date and download url
     """
     files = list_github_dir(owner, repo, path, ref=ref, token=token)
-    file_paths = [f['path'] for f in files]
+    file_paths = [f["path"] for f in files]
     last_modified = get_last_commit_dates(owner, repo, file_paths, ref=ref, token=token)
 
     enriched = defaultdict(dict)
     for f in files:
-        timestamp = last_modified.get(f['path'])
-        name= f['name']
-        path= f['path']
-        download_url= f['download_url']
+        timestamp = last_modified.get(f["path"])
+        name = f["name"]
+        path = f["path"]
+        download_url = f["download_url"]
         base_name, ext = name.split(".")
         comparison_name = f"{base_name}_{timestamp}.{ext}"
         enriched[comparison_name] = {
-            'path': path,
-            'download_url': download_url,
-            'timestamp': timestamp,
-            'name' : name
+            "path": path,
+            "download_url": download_url,
+            "timestamp": timestamp,
+            "name": name,
         }
     return enriched
 
 
 def get_new_github_files_for_bln(
-    bln_file_names: List[str],
-    github_files: Dict[str, Dict],
-    SLACK_BOT_INTERNAL_ALERTER
+    bln_file_names: List[str], github_files: Dict[str, Dict], SLACK_BOT_INTERNAL_ALERTER
 ) -> Dict[str, Dict]:
     """
     Return GitHub files that should be uploaded to BLN because they're not already present.
@@ -69,11 +64,12 @@ def get_new_github_files_for_bln(
     for filename, metadata in github_files.items():
         if filename not in bln_file_set:
             new_files[filename] = metadata
-    
+
     message = f"{len(new_files)} new files found"
     logger.info(message)
 
     return new_files
+
 
 def copy_github_files_to_bln(
     github_files: Dict[str, Dict],
@@ -114,7 +110,9 @@ def copy_github_files_to_bln(
             logger.info(f"⬇️ Downloading {filename} ...")
             response = requests.get(metadata["download_url"])
             if not response.ok:
-                logger.error(f"❌ Failed to download {filename} — Status code: {response.status_code}")
+                logger.error(
+                    f"❌ Failed to download {filename} — Status code: {response.status_code}"
+                )
                 uploads["failure"].append(filename)
                 continue
 
@@ -133,11 +131,11 @@ def copy_github_files_to_bln(
 
             sleep(delay_seconds)  # avoid overloading the API
 
-    if uploads['success']:
+    if uploads["success"]:
         message = f"{len(uploads['success'])} new files uploaded to BLN project ({uploads['success']})"
         logger.info(message)
         slackbot_alerter.post(message, "notice")
-    if uploads['failure']:
+    if uploads["failure"]:
         message = f"New files failed upload to BLN: {uploads['failure']}"
         logger.info(message)
         slackbot_alerter.post(message, "error")
@@ -152,7 +150,7 @@ def run_pipeline(environment):
     bln_project_id = os.environ.get("BLN_PROJECT_ID")
     bln_client = Client(bln_api_key)
     source_repo = "doge-scrape"
-    source_repo_owner = 'm-nolan'
+    source_repo_owner = "m-nolan"
     source_data_path = "data"
 
     github_files = get_files_with_last_modified(
@@ -161,19 +159,23 @@ def run_pipeline(environment):
         path=source_data_path,
     )
 
-    message = f"Files found in '{source_repo}/{source_data_path}' github: {github_files}"
+    message = (
+        f"Files found in '{source_repo}/{source_data_path}' github: {github_files}"
+    )
     logger.info(message)
 
     bln_project_files = list_bln_project_files(bln_client, bln_project_id)
     logger.info(f"Files found in BLN project: {bln_project_files}")
 
-    new_github_files = get_new_github_files_for_bln(bln_project_files, github_files, SLACK_BOT_INTERNAL_ALERTER)
+    new_github_files = get_new_github_files_for_bln(
+        bln_project_files, github_files, SLACK_BOT_INTERNAL_ALERTER
+    )
 
     copy_github_files_to_bln(
         github_files=new_github_files,
         client=bln_client,
         project_id=bln_project_id,
-        slackbot_alerter = SLACK_BOT_INTERNAL_ALERTER
+        slackbot_alerter=SLACK_BOT_INTERNAL_ALERTER,
     )
 
     message = "Process complete"

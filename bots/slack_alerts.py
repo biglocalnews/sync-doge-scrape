@@ -14,8 +14,6 @@ class SlackInternalAlert:
         self.client = WebClient(token=token)
         self.script_name = script_name
 
-        
-
     def post(self, message, message_type="notice"):
 
         message_type_prefix = {

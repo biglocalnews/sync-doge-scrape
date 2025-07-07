@@ -1,6 +1,7 @@
 # from pyquery import PyQuery as pq
 import requests
 from bln import Client
+
 # from test_helpers import (
 #     test_filter_old_data,
 #     test_override_new_timestamps,
@@ -9,9 +10,11 @@ from bln import Client
 # from bots.slack_alerts import SlackInternalAlert
 # import csv
 from datetime import datetime
+
 # from dateutil.relativedelta import relativedelta
 import os
 from dotenv import load_dotenv
+
 # import shutil
 import re
 import sys
@@ -25,6 +28,7 @@ logging.basicConfig(
     datefmt="%I:%M:%S",
 )
 logger = logging.getLogger(__name__)
+
 
 def set_environment():
     """
@@ -79,7 +83,10 @@ def set_environment():
     logger.info(f"{dotenv_path} successsfully loaded")
     return env
 
-def list_github_dir(owner: str, repo: str, path: str, ref: str = 'main', token: Optional[str] = None) -> List[Dict]:
+
+def list_github_dir(
+    owner: str, repo: str, path: str, ref: str = "main", token: Optional[str] = None
+) -> List[Dict]:
     """
     List files in a GitHub repo directory.
 
@@ -90,46 +97,60 @@ def list_github_dir(owner: str, repo: str, path: str, ref: str = 'main', token: 
     - Only need API token if we hit a rate limit or the repo is private
     """
     url = f"https://api.github.com/repos/{owner}/{repo}/contents/{path}"
-    headers = {'Accept': 'application/vnd.github+json'}
+    headers = {"Accept": "application/vnd.github+json"}
     if token:
-        headers['Authorization'] = f'token {token}'
+        headers["Authorization"] = f"token {token}"
 
-    resp = requests.get(url, headers=headers, params={'ref': ref})
+    resp = requests.get(url, headers=headers, params={"ref": ref})
     resp.raise_for_status()
     items = resp.json()
 
     files = []
     for item in items:
-        if item['type'] == 'file':
-            files.append({
-                'name': item['name'],
-                'path': item['path'],
-                'download_url': item['download_url'],
-            })
+        if item["type"] == "file":
+            files.append(
+                {
+                    "name": item["name"],
+                    "path": item["path"],
+                    "download_url": item["download_url"],
+                }
+            )
     return files
 
 
-def get_last_commit_dates(owner: str, repo: str, file_paths: List[str], ref: str = 'main', token: Optional[str] = None) -> Dict[str, str]:
+def get_last_commit_dates(
+    owner: str,
+    repo: str,
+    file_paths: List[str],
+    ref: str = "main",
+    token: Optional[str] = None,
+) -> Dict[str, str]:
     """
     Given a list of file paths in a GitHub repo, return the last commit timestamp for each.
 
     Returns:
         Dict mapping file path to a compact ISO-style timestamp (e.g., 2025-02-18T232513).
     """
-    headers = {'Accept': 'application/vnd.github+json'}
+    headers = {"Accept": "application/vnd.github+json"}
     if token:
-        headers['Authorization'] = f'token {token}'
+        headers["Authorization"] = f"token {token}"
 
     commit_dates = {}
     for path in file_paths:
         url = f"https://api.github.com/repos/{owner}/{repo}/commits"
-        resp = requests.get(url, headers=headers, params={'path': path, 'sha': ref, 'per_page': 1})
+        resp = requests.get(
+            url, headers=headers, params={"path": path, "sha": ref, "per_page": 1}
+        )
         resp.raise_for_status()
         data = resp.json()
 
         if data:
-            raw_ts = data[0]['commit']['committer']['date']  # e.g., "2025-02-18T23:25:13Z"
-            dt = datetime.fromisoformat(raw_ts.replace("Z", "+00:00"))  # Handle UTC time with Z
+            raw_ts = data[0]["commit"]["committer"][
+                "date"
+            ]  # e.g., "2025-02-18T23:25:13Z"
+            dt = datetime.fromisoformat(
+                raw_ts.replace("Z", "+00:00")
+            )  # Handle UTC time with Z
             formatted_ts = dt.strftime("%Y-%m-%dT%H%M%S")  # e.g., "2025-02-18T232513"
             commit_dates[path] = formatted_ts
         else:
