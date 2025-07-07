@@ -203,8 +203,6 @@ def run_pipeline(environment):
     """
     starting_message = f"Starting run for {environment.upper()} env"
     logger.info(starting_message)
-    SLACK_BOT_INTERNAL_ALERTER = SlackInternalAlert("sync-DOGE-scrape")
-    SLACK_BOT_INTERNAL_ALERTER.post(starting_message, "notice")
     bln_api_key = os.environ.get("BLN_API_TOKEN")
     bln_project_id = os.environ.get("BLN_PROJECT_ID")
     bln_client = Client(bln_api_key)
