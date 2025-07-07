@@ -22,7 +22,22 @@ def get_files_with_last_modified(
     owner: str, repo: str, path: str, ref: str = "main", token: Optional[str] = None
 ) -> List[Dict[str, str]]:
     """
-    Get files in GitHub dir along with their last commit date and download url
+    Retrieve files from a GitHub repository directory, enriched with their last commit timestamp.
+
+    Args:
+        owner: GitHub username or organization name (e.g., 'm-nolan').
+        repo: Repository name (e.g., 'doge-scrape').
+        path: Directory path within the repo to list files from (e.g., 'data').
+        ref: Branch name or commit SHA to use as the reference point (default: 'main').
+        token: Optional GitHub token for authenticated API access.
+
+    Returns:
+        A dict keyed by comparison filename (e.g., 'doge-contract_2025-06-29T204434.csv'),
+        with values containing:
+            - 'path': str — the file's path in the repo
+            - 'download_url': str — raw URL to download the file
+            - 'timestamp': str — the last commit timestamp for the file
+            - 'name': str — original filename
     """
     files = list_github_dir(owner, repo, path, ref=ref, token=token)
     file_paths = [f["path"] for f in files]
@@ -49,15 +64,29 @@ def get_new_github_files_for_bln(
     bln_file_names: List[str], github_files: Dict[str, Dict], SLACK_BOT_INTERNAL_ALERTER
 ) -> Dict[str, Dict]:
     """
-    Return GitHub files that should be uploaded to BLN because they're not already present.
+    Identify which GitHub-hosted files are not yet present in the BLN project and should be uploaded.
+
+    Compares the list of existing file names in BLN ploject against the versioned filenames
+    from GitHub and returns only those that are new. Also logs a summary message
+    and sends a Slack alert with the count of new files found.
 
     Args:
-        bln_file_names: List of existing filenames in the BLN project.
-        github_files: Dict of GitHub files keyed by full versioned filename (e.g. 'doge-contract_2025-06-29T204434.csv').
+        bln_file_names: List of filenames currently in the BLN project
+                        (e.g., ['doge-contract_2025-06-29T204434.csv']).
+        github_files: Dict of GitHub files keyed by versioned BLN-style filename
+                      (e.g., 'doge-contract_2025-06-29T204434.csv'), with values containing:
+                          {
+                              'path': str,
+                              'download_url': str,
+                              'timestamp': str,
+                              'name': str
+                          }
+        SLACK_BOT_INTERNAL_ALERTER: Slack bot or callable for sending internal notifications.
 
     Returns:
-        Dict of GitHub files that are new (not already in BLN).
+        Dict of new GitHub files (not yet present in BLN), keyed by versioned filename.
     """
+
     bln_file_set = set(bln_file_names)
     new_files = {}
 
@@ -79,24 +108,30 @@ def copy_github_files_to_bln(
     delay_seconds: float = 1.0,
 ) -> None:
     """
-    Copy GitHub-hosted files into a BLN project by downloading them to disk
-    (with correct filenames) and uploading via API.
+    Download and upload GitHub-hosted files to the BLN project.
+
+    Each file is downloaded to a temporary location (retaining its versioned filename) and uploaded to BLN.
+    Slack alerts are posted summarizing which files were successfully uploaded and which (if any) failed.
 
     Args:
-        github_files: Dict of files to copy, where each key is a versioned BLN-style filename
-                      (e.g., "doge-contract_2025-06-29T204434.csv") and the value is a dict with:
+        github_files: Dict of GitHub files to upload, keyed by versioned BLN-style filename
+                      (e.g., "doge-contract_2025-06-29T204434.csv"). Each value must include:
                           {
-                              'path': str,
-                              'download_url': str,
-                              'timestamp': str,
-                              'name': str
+                              'path': str,           # GitHub path (e.g., "data/doge-contract.csv")
+                              'download_url': str,   # Direct raw URL to download the file
+                              'timestamp': str,      # Commit timestamp (e.g., "2025-06-29T204434")
+                              'name': str            # Original GitHub filename (e.g., "doge-contract.csv")
                           }
 
-        client: An initialized BLN API client.
-        project_id: The BLN project ID to upload to.
-        delay_seconds: Optional sleep between uploads to avoid rate limiting (default 1.0s).
-    """
+        client: An initialized instance of the BLN API Client.
+        project_id: The unique BLN project ID where the files will be uploaded.
+        slackbot_alerter: A callable or bot object
+        delay_seconds: Optional delay between uploads (default: 1.0 second) to avoid rate limiting or API overload.
 
+    Behavior:
+        - If no files are passed, logs and sends a Slack "notice" stating that no new files were found.
+        - After processing, logs and alerts on the number of successful and failed uploads.
+    """
     if not github_files:
         message = "No new files found in source repo."
         logger.info(message)
@@ -142,6 +177,30 @@ def copy_github_files_to_bln(
 
 
 def run_pipeline(environment):
+    """
+    Orchestrates the full pipeline to sync updated files from a GitHub directory into a BLN project.
+
+    Steps:
+        1. Logs and alerts the start of the run.
+        2. Fetches the list of files in the source GitHub repo (with last-modified timestamps).
+        3. Fetches the list of current files in the target BLN project.
+        4. Compares the two to determine which GitHub files are new.
+        5. Downloads and uploads new files to the BLN project.
+        6. Logs and alerts the result of the operation.
+
+    Args:
+        environment: The environment label (e.g. 'prod', 'test') used for logging and alert context.
+
+    Assumptions:
+        - `BLN_API_TOKEN` and `BLN_PROJECT_ID` are available in the environment.
+        - GitHub source repo is 'm-nolan/doge-scrape', targeting the 'data/' directory.
+        - Uses SlackInternalAlert for operational notifications.
+
+    Side Effects:
+        - Posts notices and success/failure alerts to Slack.
+        - Logs detailed sync status using the configured logger.
+        - Uploads any new GitHub-hosted files to BLN.
+    """
     starting_message = f"Starting run for {environment.upper()} env"
     logger.info(starting_message)
     SLACK_BOT_INTERNAL_ALERTER = SlackInternalAlert("sync-DOGE-scrape")
