@@ -5,7 +5,7 @@ Looks for new data in https://github.com/m-nolan/doge-scrape/tree/main/data and 
 
 ## 🚀 Getting Started
 
-## ✅ Requirements
+## Requirements
 
 - Python 3.8+
 - Valid BLN API token wich account access to both BLN `DOGE claim archive projects` ([test](https://biglocalnews.org/#/project/UHJvamVjdDowMjZlMzQzMi04MTZhLTRiYzAtOTY0NS0yMDJkZmU3ZTJiNDM=), [prod](https://biglocalnews.org/#/project/UHJvamVjdDo2NzkxYTJmNi0wNTNmLTQzMTEtYjE5Yy03MTc3MzFmMGUwZDY=).

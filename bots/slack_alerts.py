@@ -18,7 +18,7 @@ class SlackInternalAlert:
 
         message_type_prefix = {
             "error": "🚨",
-            "success": "✅",
+            "success": "👍",
             "notice" : "ℹ️"
         }
         formatted_message = f"{message_type_prefix[message_type]} {self.script_name}: {message}" 
