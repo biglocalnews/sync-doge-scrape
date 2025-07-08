@@ -1,6 +1,6 @@
 # Sync Doge Scrape
 
-Looks for new data in https://github.com/m-nolan/doge-scrape/tree/main/data and uploads anything missing to Big Local News project.
+Looks for new data in https://github.com/m-nolan/doge-scrape/tree/main/data and uploads any new data to Big Local News project.
 
 
 ## 🚀 Getting Started
