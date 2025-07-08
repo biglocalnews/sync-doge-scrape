@@ -59,5 +59,5 @@ python run.py test
 
 (Scrappy method for now)
 
-If you want to test the script, go into the test BLN project and delete the most recent files.
+If you want to test the script, go into the test BLN project and delete the most recent files before running the command above.
 
