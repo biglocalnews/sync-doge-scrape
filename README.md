@@ -49,9 +49,9 @@ python run.py test
 ### Behavior:
 
 - Loads environment-specific variables from `.env.test` or `.env.prod`
-- Fetches the list of files in the source GitHub repo (with last-modified timestamps).
+- Fetches the list of files in the source GitHub repo, [doge-scrape](https://github.com/m-nolan/doge-scrape/tree/main/data) (with last-modified timestamps).
 - Fetches the list of current files in the target BLN project.
-- Compares the two to determine which GitHub files are new.
+- Compares the two to determine which GitHub files are new or updated since last run.
 - Downloads and uploads new files to the BLN project.
 
 
