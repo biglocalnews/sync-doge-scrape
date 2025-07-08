@@ -61,7 +61,7 @@ def get_files_with_last_modified(
 
 
 def get_new_github_files_for_bln(
-    bln_file_names: List[str], github_files: Dict[str, Dict], SLACK_BOT_INTERNAL_ALERTER
+    bln_file_names: List[str], github_files: Dict[str, Dict]
 ) -> Dict[str, Dict]:
     """
     Identify which GitHub-hosted files are not yet present in the BLN project and should be uploaded.
@@ -81,7 +81,6 @@ def get_new_github_files_for_bln(
                               'timestamp': str,
                               'name': str
                           }
-        SLACK_BOT_INTERNAL_ALERTER: Slack bot or callable for sending internal notifications.
 
     Returns:
         Dict of new GitHub files (not yet present in BLN), keyed by versioned filename.
@@ -132,12 +131,6 @@ def copy_github_files_to_bln(
         - If no files are passed, logs and sends a Slack "notice" stating that no new files were found.
         - After processing, logs and alerts on the number of successful and failed uploads.
     """
-    if not github_files:
-        message = "No new files found in source repo."
-        logger.info(message)
-        slackbot_alerter.post(message, "notice")
-        return
-
     uploads = {"success": [], "failure": []}
 
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -169,11 +162,10 @@ def copy_github_files_to_bln(
     if uploads["success"]:
         message = f"{len(uploads['success'])} new files uploaded to BLN project ({uploads['success']})"
         logger.info(message)
-        slackbot_alerter.post(message, "notice")
     if uploads["failure"]:
         message = f"New files failed upload to BLN: {uploads['failure']}"
         logger.info(message)
-        slackbot_alerter.post(message, "error")
+    return uploads
 
 
 def run_pipeline(environment):
@@ -210,6 +202,8 @@ def run_pipeline(environment):
     source_repo_owner = "m-nolan"
     source_data_path = "data"
 
+    SLACK_BOT_INTERNAL_ALERTER = SlackInternalAlert("doge-scrape")
+
     github_files = get_files_with_last_modified(
         source_repo_owner,
         source_repo,
@@ -225,16 +219,34 @@ def run_pipeline(environment):
     logger.info(f"Files found in BLN project: {bln_project_files}")
 
     new_github_files = get_new_github_files_for_bln(
-        bln_project_files, github_files, SLACK_BOT_INTERNAL_ALERTER
+        bln_project_files, github_files
     )
+    file_upload_message = ""
+    failed_uploads = None
+    outcome = None
 
-    copy_github_files_to_bln(
-        github_files=new_github_files,
-        client=bln_client,
-        project_id=bln_project_id,
-        slackbot_alerter=SLACK_BOT_INTERNAL_ALERTER,
-    )
+    if new_github_files:
+        uploads = copy_github_files_to_bln(
+            github_files=new_github_files,
+            client=bln_client,
+            project_id=bln_project_id,
+            slackbot_alerter=SLACK_BOT_INTERNAL_ALERTER,
+        )
+        if uploads["success"]:
+            success_uploads = uploads['success']
+            file_upload_message = f"{len(success_uploads)} new/updated file(s) uploaded to BLN project ({', '.join(success_uploads)})"
+            outcome = "success"
+        if uploads["failure"]:
+            failure_uploads = uploads['failure']
+            file_upload_message = f"{file_upload_message}. {len(failure_uploads)} new/updated file(s) failed to upload to BLN project ({', '.join(failure_uploads)})"
+            outcome = "error"
 
-    message = "Process complete"
-    logger.info(message)
-    SLACK_BOT_INTERNAL_ALERTER.post(message, "success")
+    else:
+        file_upload_message = f"No new files found."
+        outcome = "success"
+    
+    base_final_message = "Process complete."
+    final_message = f"{base_final_message} {file_upload_message}"
+
+    logger.info(final_message)
+    SLACK_BOT_INTERNAL_ALERTER.post(final_message, outcome)
