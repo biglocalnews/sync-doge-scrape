@@ -3,13 +3,11 @@ import os
 import sys
 from datetime import datetime
 from pathlib import Path
-
-from typing import List, Dict, Optional
+from typing import Dict, List, Optional
 
 import requests
-from dotenv import load_dotenv
-
 from bln import Client
+from dotenv import load_dotenv
 
 logging.basicConfig(
     format="\n%(asctime)s %(levelname)s: %(message)s",
