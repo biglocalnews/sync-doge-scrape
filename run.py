@@ -1,6 +1,7 @@
-from sync_doge_scrape import run_pipeline
-from helpers import set_environment
 import logging
+
+from helpers import set_environment
+from sync_doge_scrape import run_pipeline
 
 """
 Sync Doge Scrape

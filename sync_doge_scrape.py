@@ -1,14 +1,15 @@
 import logging
-from typing import List, Dict, Optional
 import os
-from bln import Client
-from collections import defaultdict
-import requests
 import tempfile
-import logging
+from collections import defaultdict
 from time import sleep
-from helpers import list_github_dir, get_last_commit_dates, list_bln_project_files
+from typing import Dict, List, Optional
+
+import requests
+from bln import Client
+
 from bots.slack_alerts import SlackInternalAlert
+from helpers import get_last_commit_dates, list_bln_project_files, list_github_dir
 
 logging.basicConfig(
     format="\n%(asctime)s %(levelname)s: %(message)s",
@@ -218,9 +219,7 @@ def run_pipeline(environment):
     bln_project_files = list_bln_project_files(bln_client, bln_project_id)
     logger.info(f"Files found in BLN project: {bln_project_files}")
 
-    new_github_files = get_new_github_files_for_bln(
-        bln_project_files, github_files
-    )
+    new_github_files = get_new_github_files_for_bln(bln_project_files, github_files)
     file_upload_message = ""
     failed_uploads = None
     outcome = None
@@ -233,18 +232,18 @@ def run_pipeline(environment):
             slackbot_alerter=SLACK_BOT_INTERNAL_ALERTER,
         )
         if uploads["success"]:
-            success_uploads = uploads['success']
+            success_uploads = uploads["success"]
             file_upload_message = f"{len(success_uploads)} new/updated file(s) uploaded to BLN project ({', '.join(success_uploads)})"
             outcome = "success"
         if uploads["failure"]:
-            failure_uploads = uploads['failure']
+            failure_uploads = uploads["failure"]
             file_upload_message = f"{file_upload_message}. {len(failure_uploads)} new/updated file(s) failed to upload to BLN project ({', '.join(failure_uploads)})"
             outcome = "error"
 
     else:
         file_upload_message = f"No new files found."
         outcome = "success"
-    
+
     base_final_message = "Process complete."
     final_message = f"{base_final_message} {file_upload_message}"
 
