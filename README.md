@@ -1,6 +1,10 @@
 # Sync Doge Scrape
 
-Looks for new data in https://github.com/m-nolan/doge-scrape/tree/main/data and uploads any new data to Big Local News project.
+Looks for new data in https://github.com/m-nolan/doge-scrape/tree/main/data and uploads any new data to Big Local News project. This is a way of archiving the data from Michael Nolan's doge-scrape.
+
+## Historical note
+
+This version has been completely rebuilt by @paigemoody for production use. The original notebook mangled by @stucka is available at https://github.com/biglocalnews/sync-doge-scrape/blob/master/notebooks/sync-doge-scrape.ipynb
 
 
 ## 🚀 Getting Started
@@ -40,7 +44,7 @@ pip install -r requirements.txt
 
 ## 🏃 Running the Script
 
-Run locally with `test` as the argument. Running with `prod` will publish updates to real alert channels for external users - this should be reserved for use in production.
+Run locally with `test` as the argument. Running with `prod` will publish updates to real alert channels for production use.
 
 ```bash
 python run.py test

@@ -5,3 +5,4 @@ __pycache__
 .env.*
 # But don't ignore the example env files
 !.env.*.example
+data/
