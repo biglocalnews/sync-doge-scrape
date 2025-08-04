@@ -1,4 +1,3 @@
-import datetime
 import logging
 
 from helpers import set_environment
@@ -19,6 +18,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 if __name__ == "__main__":
-    logger.debug(f"{datetime.datetime.now()}: Running sync-doge-scrape...")
+    logger.debug("Running sync-doge-scrape...")
     environment = set_environment()
     run_pipeline(environment)
