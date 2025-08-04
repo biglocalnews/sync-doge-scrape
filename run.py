@@ -1,3 +1,4 @@
+import datetime
 import logging
 
 from helpers import set_environment
@@ -13,11 +14,11 @@ uploads anything missing to Big Local News project.
 logging.basicConfig(
     format="\n%(asctime)s %(levelname)s: %(message)s",
     level=logging.DEBUG,
-    datefmt="%I:%M:%S",
+    datefmt="%H:%M:%S",
 )
 logger = logging.getLogger(__name__)
 
 if __name__ == "__main__":
-    print("Running sync doge scrape...")
+    logger.debug(f"{datetime.datetime.now()}: Running sync-doge-scrape...")
     environment = set_environment()
     run_pipeline(environment)

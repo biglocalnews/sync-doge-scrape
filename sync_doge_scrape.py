@@ -14,7 +14,7 @@ from helpers import get_last_commit_dates, list_bln_project_files, list_github_d
 logging.basicConfig(
     format="\n%(asctime)s %(levelname)s: %(message)s",
     level=logging.DEBUG,
-    datefmt="%I:%M:%S",
+    datefmt="%H:%M:%S",
 )
 logger = logging.getLogger(__name__)
 
