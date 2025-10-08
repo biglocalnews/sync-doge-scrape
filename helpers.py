@@ -163,3 +163,10 @@ def list_bln_project_files(client: Client, project_id: str) -> List[Dict[str, st
         current_files.append(f["name"])
 
     return current_files
+
+def list_new_bln_project_files(client: Client, project_id: str) -> List[Dict[str, str]]:
+    current_files = list_bln_project_files(client, project_id)
+    contract_file = max([fn for fn in current_files if 'doge-contract' in fn])  # calling `max()` on strings to get the most recent file i.e. the 'largest' datetime str
+    grant_file = max([fn for fn in current_files if 'doge-grant' in fn])
+    property_file = max([fn for fn in current_files if 'doge-property' in fn])
+    return [contract_file, grant_file, property_file]
