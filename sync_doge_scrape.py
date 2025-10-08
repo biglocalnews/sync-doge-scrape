@@ -1,7 +1,10 @@
 import logging
 import os
+import pandas as pd
 import tempfile
 from collections import defaultdict
+from datetime import datetime
+from glob import glob
 from time import sleep
 from typing import Dict, List, Optional
 
@@ -9,7 +12,8 @@ import requests
 from bln import Client
 
 from bots.slack_alerts import SlackInternalAlert
-from helpers import get_last_commit_dates, list_bln_project_files, list_github_dir
+from doge_scrape import scrape_doge, clean_stub_df, df_row_diff_2, extend_contract_data, extend_grant_data
+from helpers import get_last_commit_dates, list_bln_project_files, list_new_bln_project_files, list_github_dir
 
 logging.basicConfig(
     format="\n%(asctime)s %(levelname)s: %(message)s",
@@ -18,6 +22,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+def get_bln_files_with_last_modified(
+        client: Client, project_id: str, file_list: list[str]
+):
+    pass
 
 def get_files_with_last_modified(
     owner: str, repo: str, path: str, ref: str = "main", token: Optional[str] = None
@@ -169,6 +177,116 @@ def copy_github_files_to_bln(
     return uploads
 
 
+def copy_scrape_files_to_bln(
+    scrape_files: List[str],
+    client: Client,
+    project_id: str,
+    file_dir: str = "./tmp_data",
+    delay_seconds: float = 1.0
+) -> None:
+    
+    uploads = {"success": [], "failure": []}
+    
+    for filename in scrape_files:
+        filepath = os.path.join(file_dir, filename)
+        try:
+            logger.info("⬆️ Uploading {filename} to BLN ...")
+            client.upload_file(project_id, filepath)
+            uploads["success"].append(filename)
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to upload {filename}: {e}")
+
+        sleep(delay_seconds)
+
+    if uploads["success"]:
+        message = f"{len(uploads['success'])} new files uploaded to BLN project ({uploads['success']})"
+        logger.info(message)
+    if uploads["failure"]:
+        message = f"New files failed upload to BLN: {uploads['failure']}"
+        logger.info(message)
+    return uploads
+
+
+def load_pre_data_bln(bln_client, bln_project_id, bln_project_files, tmp_dir="./tmp_data"):
+    # download copies of the existing files
+    for project_file in bln_project_files:
+        bln_client.download_file(bln_project_id, project_file, output_dir=tmp_dir)
+    # load files as dataframes
+    contract_file = [f for f in bln_project_files if 'contract' in f][0]
+    pre_contract_df = pd.read_csv(os.path.join(tmp_dir,contract_file))
+    grant_file = [f for f in bln_project_files if 'grant' in f][0]
+    pre_grant_df = pd.read_csv(os.path.join(tmp_dir,grant_file))
+    property_file = [f for f in bln_project_files if 'property' in f][0]
+    pre_property_df = pd.read_csv(os.path.join(tmp_dir,property_file))
+    return pre_contract_df, pre_grant_df, pre_property_df
+
+
+def update_doge_data(bln_client, bln_project_id, bln_project_files):
+    datetime_scrape = datetime.strftime(datetime.now(),'%Y-%m-%d-%H%M')
+    print('loading current data...')
+    pre_contract_df, pre_grant_df, pre_property_df = load_pre_data_bln(bln_client, bln_project_id, bln_project_files)
+    print('scraping new data...')
+    stub_contract_df, stub_grant_df, stub_property_df = scrape_doge()
+    stub_contract_df, stub_grant_df, stub_property_df = [clean_stub_df(df) for df in [stub_contract_df, stub_grant_df, stub_property_df]]
+    print('finding new and changed entries...')
+    (new_contract_df, contract_drop_idx), (new_grant_df, grant_drop_idx), (new_property_df, property_drop_idx) = [
+        df_row_diff_2(pre_df,stub_df) for pre_df, stub_df in zip(
+            [pre_contract_df,pre_grant_df,pre_property_df],[stub_contract_df, stub_grant_df, stub_property_df]
+        )
+    ] # dropped idx values are for debugging and tracking erroneously ejected "duplicate" entries.
+    new_data_stats = {
+        "contract": len(new_contract_df),
+        "grant": len(new_contract_df),
+        "property": len(new_property_df)
+    }
+    print('extending contract table with FPDS data...')
+    new_contract_df = extend_contract_data(new_contract_df,datetime_scrape)
+    new_contract_df['dt_scrape'] = datetime_scrape
+    contract_df = pd.concat([pre_contract_df,new_contract_df],ignore_index=True)
+    print('extending grant table with USASpending data...')
+    new_grant_df = extend_grant_data(new_grant_df,datetime_scrape)
+    new_grant_df['dt_scrape'] = datetime_scrape
+    grant_df = pd.concat([pre_grant_df,new_grant_df],ignore_index=True)
+    new_property_df['dt_scrape'] = datetime_scrape
+    property_df = pd.concat([pre_property_df,new_property_df],ignore_index=True)
+    return contract_df, grant_df, property_df, stub_contract_df, stub_grant_df, stub_property_df, new_data_stats
+
+
+def save_doge_data_bln(contract_df, grant_df, property_df, new_data_stats, data_dir="./data"):
+    dt_str = datetime.now().isoformat(timespec='seconds').replace(':','')
+    new_files = []
+
+    if new_data_stats["contract"] > 0:
+        contract_filename = f"doge-contract_{dt_str}.csv"
+        contract_df.to_csv(os.path.join(data_dir, contract_filename),index=False)
+        new_files.append(contract_filename)
+
+    if new_data_stats["grant"] > 0:
+        grant_filename = f"doge-grant_{dt_str}.csv"
+        grant_df.to_csv(os.path.join(data_dir, grant_filename),index=False)
+        new_files.append(grant_filename)
+
+    if new_data_stats["property"] > 0:
+        property_filename = f"doge-property_{dt_str}.csv"
+        property_df.to_csv(os.path.join(data_dir, property_filename),index=False)
+        new_files.append(property_filename)
+
+    return new_files
+
+
+def delete_tmp_data(files_to_delete,tmp_dir="./tmp_data"):
+    """
+    Delete specified files from a specified directory
+    """
+    for file in files_to_delete:
+        if os.path.exists(os.path.join(tmp_dir,file)):
+            logger.info(f"Removing temporary file: {file}")
+            os.remove(os.path.join(tmp_dir,file))
+        else:
+            logger.info(f"Attempt to delete temorary file: {file} failed, file not found")
+
+
 def run_pipeline(environment):
     """
     Orchestrates the full pipeline to sync updated files from a GitHub directory into a BLN project.
@@ -204,41 +322,67 @@ def run_pipeline(environment):
     source_data_path = "data"
 
     SLACK_BOT_INTERNAL_ALERTER = SlackInternalAlert("doge-scrape")
+    
+    newscrape=True
 
-    github_files = get_files_with_last_modified(
-        source_repo_owner,
-        source_repo,
-        path=source_data_path,
-    )
+    # NEW INTEGRATED SCRAPING CODE, crawls and uploads instead of dl github files to sync
+    if newscrape:
+        bln_project_files = list_new_bln_project_files(bln_client, bln_project_id)
+        logger.info(f"Most recent files found in BLN project: {bln_project_files}")
 
-    message = (
-        f"Files found in '{source_repo}/{source_data_path}' github: {github_files}"
-    )
-    logger.info(message)
+        contract_df, grant_df, property_df, stub_contract_df, stub_grant_df, stub_property_df, new_data_stats = update_doge_data(bln_client, bln_project_id, bln_project_files)
 
-    bln_project_files = list_bln_project_files(bln_client, bln_project_id)
-    logger.info(f"Files found in BLN project: {bln_project_files}")
+        # save new scrape
+        new_scrape_files = save_doge_data_bln(contract_df, grant_df, property_df, new_data_stats, data_dir='./tmp_data')
 
-    new_github_files = get_new_github_files_for_bln(bln_project_files, github_files)
-    file_upload_message = ""
-    failed_uploads = None
-    outcome = None
+        if new_scrape_files:
+            uploads = copy_scrape_files_to_bln(
+                scrape_files=new_scrape_files,
+                client=bln_client,
+                project_id=bln_project_id,
+            )
 
-    if new_github_files:
-        uploads = copy_github_files_to_bln(
-            github_files=new_github_files,
-            client=bln_client,
-            project_id=bln_project_id,
-            slackbot_alerter=SLACK_BOT_INTERNAL_ALERTER,
+        # delete tmp pre-scrape files
+        delete_tmp_data([*bln_project_files, *new_scrape_files])
+        # delete_tmp_data(new_scrape_files) # TODO: add this? Possibly remake using `with tempfile.TemporaryDirectory() as tmpdir:`
+
+    # ORIGINAL SYNC CODE
+    else:
+        github_files = get_files_with_last_modified(
+            source_repo_owner,
+            source_repo,
+            path=source_data_path,
         )
-        if uploads["success"]:
-            success_uploads = uploads["success"]
-            file_upload_message = f"{len(success_uploads)} new/updated file(s) uploaded to BLN project ({', '.join(success_uploads)})"
-            outcome = "success"
-        if uploads["failure"]:
-            failure_uploads = uploads["failure"]
-            file_upload_message = f"{file_upload_message}. {len(failure_uploads)} new/updated file(s) failed to upload to BLN project ({', '.join(failure_uploads)})"
-            outcome = "error"
+
+        message = (
+            f"Files found in '{source_repo}/{source_data_path}' github: {github_files}"
+        )
+        logger.info(message)
+
+        bln_project_files = list_bln_project_files(bln_client, bln_project_id)
+        logger.info(f"Files found in BLN project: {bln_project_files}")
+
+        new_github_files = get_new_github_files_for_bln(bln_project_files, github_files)
+        file_upload_message = ""
+        failed_uploads = None
+        outcome = None
+
+        if new_github_files:
+            uploads = copy_github_files_to_bln(
+                github_files=new_github_files,
+                client=bln_client,
+                project_id=bln_project_id,
+                slackbot_alerter=SLACK_BOT_INTERNAL_ALERTER,
+            )
+
+    if uploads["success"]:
+        success_uploads = uploads["success"]
+        file_upload_message = f"{len(success_uploads)} new/updated file(s) uploaded to BLN project ({', '.join(success_uploads)})"
+        outcome = "success"
+    if uploads["failure"]:
+        failure_uploads = uploads["failure"]
+        file_upload_message = f"{file_upload_message}. {len(failure_uploads)} new/updated file(s) failed to upload to BLN project ({', '.join(failure_uploads)})"
+        outcome = "error"
 
     else:
         file_upload_message = f"No new files found."
