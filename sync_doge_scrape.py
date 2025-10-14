@@ -22,11 +22,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def get_bln_files_with_last_modified(
-        client: Client, project_id: str, file_list: list[str]
-):
-    pass
-
 def get_files_with_last_modified(
     owner: str, repo: str, path: str, ref: str = "main", token: Optional[str] = None
 ) -> List[Dict[str, str]]:
@@ -183,7 +178,20 @@ def copy_scrape_files_to_bln(
     project_id: str,
     file_dir: str = "./tmp_data",
     delay_seconds: float = 1.0
-) -> None:
+) -> Dict:
+    """
+    Upload specified files to the BLN project.
+
+    Args:
+        scrape_files: list of file names idenitfying files to transfer to a specified BLN project directory.
+        client: initialized instance of the BLN API client.
+        project_id: unique BLN project ID where the files will be uploaded.
+        file_dir: directory where `scrape_files` are located. Default: './tmp_data'.
+        delay_seconds: wait time between upload attempts. Default: 1.0 seconds.
+
+    Returns:
+        uploads: dict of successfully and unsuccessfully uploaded files stored as lists of file names under the keys "success" and "failure."
+    """
     
     uploads = {"success": [], "failure": []}
     
@@ -208,12 +216,30 @@ def copy_scrape_files_to_bln(
     return uploads
 
 
-def load_pre_data_bln(bln_client, bln_project_id, bln_project_files, tmp_dir="./tmp_data"):
+def load_pre_data_bln(
+        bln_client: Client, 
+        bln_project_id: str, 
+        bln_project_files: List[str], 
+        tmp_dir: str="./tmp_data"
+    ):
+    """
+    Downloads CSV files listed in the specified BLN project directory and loads them as pandas DataFrames.
+
+    Args:
+        bln_client: initialized instance of the BLN API client.
+        bln_project_id: unique BLN project ID where the files will be uploaded.
+        bln_project_files: list of files in BLN project directory to download.
+        tmp_dir: local directory where BLN project files are saved.
+
+    Returns:
+        pre_contract_df, pre_grant_df, pre_property_df: pandas DataFrames containing DOGE contract, grant, and property/lease cuts, respectively.
+    """
+
     # download copies of the existing files
     for project_file in bln_project_files:
         bln_client.download_file(bln_project_id, project_file, output_dir=tmp_dir)
     # load files as dataframes
-    contract_file = [f for f in bln_project_files if 'contract' in f][0]
+    contract_file = [f for f in bln_project_files if 'contract' in f][0]    # there should only be a single file in the resulting list but this unpacks the filtered output
     pre_contract_df = pd.read_csv(os.path.join(tmp_dir,contract_file))
     grant_file = [f for f in bln_project_files if 'grant' in f][0]
     pre_grant_df = pd.read_csv(os.path.join(tmp_dir,grant_file))
@@ -223,6 +249,19 @@ def load_pre_data_bln(bln_client, bln_project_id, bln_project_files, tmp_dir="./
 
 
 def update_doge_data(bln_client, bln_project_id, bln_project_files):
+    """
+    Crawls the DOGE "savings" site and scrape its current tables containing cut federal grants, contracts and leases.
+    New entries are added to pandas DataFrames to be uploaded to the BLN DOGE tracker project.
+
+    Args:
+        bln_client: initialized instance of the BLN API client.
+        bln_project_id: unique BLN project ID where the files will be uploaded.
+        bln_project_files: list of files in BLN project directory to download and update.
+
+    Returns:
+        contract_df, grant_df, property_df: pandas dataframes of DOGE program cuts, separated by type
+        new_data_stats: dict of new entry counts for contracts, grants and leases.
+    """
     datetime_scrape = datetime.strftime(datetime.now(),'%Y-%m-%d-%H%M')
     print('loading current data...')
     pre_contract_df, pre_grant_df, pre_property_df = load_pre_data_bln(bln_client, bln_project_id, bln_project_files)
@@ -250,10 +289,21 @@ def update_doge_data(bln_client, bln_project_id, bln_project_files):
     grant_df = pd.concat([pre_grant_df,new_grant_df],ignore_index=True)
     new_property_df['dt_scrape'] = datetime_scrape
     property_df = pd.concat([pre_property_df,new_property_df],ignore_index=True)
-    return contract_df, grant_df, property_df, stub_contract_df, stub_grant_df, stub_property_df, new_data_stats
+    return contract_df, grant_df, property_df, new_data_stats
 
 
-def save_doge_data_bln(contract_df, grant_df, property_df, new_data_stats, data_dir="./data"):
+def save_doge_data_bln(contract_df, grant_df, property_df, new_data_stats, data_dir="./tmp_data"):
+    """
+    Save dataframes of DOGE data to CSV files if each given dataframe has new entires from the most recent scrape.
+
+    Args:
+        contract_df, grant_df, property_df: pandas DataFrames of scraped, updated DOGE-cut federal programs.
+        new_data_stats: dict of new entry counts for contracts, grants and leases.
+        data_dir: directory where new data files are saved from input *_df files.
+
+    Returns:
+        new_files: list of file names for each file saved to data_dir. Default: "./tmp_data"
+    """
     dt_str = datetime.now().isoformat(timespec='seconds').replace(':','')
     new_files = []
 
@@ -277,7 +327,11 @@ def save_doge_data_bln(contract_df, grant_df, property_df, new_data_stats, data_
 
 def delete_tmp_data(files_to_delete,tmp_dir="./tmp_data"):
     """
-    Delete specified files from a specified directory
+    Delete specified files from a specified directory.
+
+    Args:
+        files_to_delete: list of file name strings for all files to delete.
+        tmp_dir: data directory where files in `files_to_delete` are located.
     """
     for file in files_to_delete:
         if os.path.exists(os.path.join(tmp_dir,file)):
@@ -330,10 +384,10 @@ def run_pipeline(environment):
         bln_project_files = list_new_bln_project_files(bln_client, bln_project_id)
         logger.info(f"Most recent files found in BLN project: {bln_project_files}")
 
-        contract_df, grant_df, property_df, stub_contract_df, stub_grant_df, stub_property_df, new_data_stats = update_doge_data(bln_client, bln_project_id, bln_project_files)
+        contract_df, grant_df, property_df, new_data_stats = update_doge_data(bln_client, bln_project_id, bln_project_files)
 
         # save new scrape
-        new_scrape_files = save_doge_data_bln(contract_df, grant_df, property_df, new_data_stats, data_dir='./tmp_data')
+        new_scrape_files = save_doge_data_bln(contract_df, grant_df, property_df, new_data_stats)
 
         if new_scrape_files:
             uploads = copy_scrape_files_to_bln(
