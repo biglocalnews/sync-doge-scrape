@@ -6,6 +6,7 @@ __pycache__
 # But don't ignore the example env files
 !.env.*.example
 data/
+runlog/
 tmp_data/
 # scatch files, start them with a "_"
 _*.py

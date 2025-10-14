@@ -8,9 +8,6 @@ import requests as req
 import validators
 from bs4 import BeautifulSoup
 from ratelimit import limits, sleep_and_retry
-from selenium.webdriver import Firefox
-from selenium.webdriver.common.by import By
-from selenium.webdriver.firefox.options import Options
 from tqdm import tqdm
 
 N_REQ = 10
@@ -90,16 +87,6 @@ def limit_req(url,headers={}):
     if r.status_code != 200:
         raise Exception('API response: {}'.format(r.status_code))
     return r
-
-def configure_driver():
-    op = Options()
-    op.add_argument('-headless')
-    return Firefox(options=op)
-
-def open_tables(driver):
-    buttons = driver.find_elements(By.XPATH,"//*[contains(text(), 'View All ')]")
-    [b.click() for b in buttons]
-    return driver
 
 def scrape_doge_endpoint(api_root,endpoint_str,params):
     endpoint_json_list = []

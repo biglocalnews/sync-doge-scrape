@@ -4,7 +4,6 @@ import pandas as pd
 import tempfile
 from collections import defaultdict
 from datetime import datetime
-from glob import glob
 from time import sleep
 from typing import Dict, List, Optional
 
@@ -198,7 +197,7 @@ def copy_scrape_files_to_bln(
     for filename in scrape_files:
         filepath = os.path.join(file_dir, filename)
         try:
-            logger.info("⬆️ Uploading {filename} to BLN ...")
+            logger.info(f"⬆️ Uploading {filename} to BLN ...")
             client.upload_file(project_id, filepath)
             uploads["success"].append(filename)
             
@@ -263,12 +262,12 @@ def update_doge_data(bln_client, bln_project_id, bln_project_files):
         new_data_stats: dict of new entry counts for contracts, grants and leases.
     """
     datetime_scrape = datetime.strftime(datetime.now(),'%Y-%m-%d-%H%M')
-    print('loading current data...')
+    logger.info('loading current data...')
     pre_contract_df, pre_grant_df, pre_property_df = load_pre_data_bln(bln_client, bln_project_id, bln_project_files)
-    print('scraping new data...')
+    logger.info('scraping new data...')
     stub_contract_df, stub_grant_df, stub_property_df = scrape_doge()
     stub_contract_df, stub_grant_df, stub_property_df = [clean_stub_df(df) for df in [stub_contract_df, stub_grant_df, stub_property_df]]
-    print('finding new and changed entries...')
+    logger.info('finding new and changed entries...')
     (new_contract_df, contract_drop_idx), (new_grant_df, grant_drop_idx), (new_property_df, property_drop_idx) = [
         df_row_diff_2(pre_df,stub_df) for pre_df, stub_df in zip(
             [pre_contract_df,pre_grant_df,pre_property_df],[stub_contract_df, stub_grant_df, stub_property_df]
@@ -276,14 +275,14 @@ def update_doge_data(bln_client, bln_project_id, bln_project_files):
     ] # dropped idx values are for debugging and tracking erroneously ejected "duplicate" entries.
     new_data_stats = {
         "contract": len(new_contract_df),
-        "grant": len(new_contract_df),
+        "grant": len(new_grant_df),
         "property": len(new_property_df)
     }
-    print('extending contract table with FPDS data...')
+    logger.info('extending contract table with FPDS data...')
     new_contract_df = extend_contract_data(new_contract_df,datetime_scrape)
     new_contract_df['dt_scrape'] = datetime_scrape
     contract_df = pd.concat([pre_contract_df,new_contract_df],ignore_index=True)
-    print('extending grant table with USASpending data...')
+    logger.info('extending grant table with USASpending data...')
     new_grant_df = extend_grant_data(new_grant_df,datetime_scrape)
     new_grant_df['dt_scrape'] = datetime_scrape
     grant_df = pd.concat([pre_grant_df,new_grant_df],ignore_index=True)
@@ -306,6 +305,11 @@ def save_doge_data_bln(contract_df, grant_df, property_df, new_data_stats, data_
     """
     dt_str = datetime.now().isoformat(timespec='seconds').replace(':','')
     new_files = []
+
+    if os.path.exists(data_dir):
+        pass
+    else:
+        os.makedirs(data_dir)
 
     if new_data_stats["contract"] > 0:
         contract_filename = f"doge-contract_{dt_str}.csv"
@@ -380,54 +384,28 @@ def run_pipeline(environment):
     newscrape=True
 
     # NEW INTEGRATED SCRAPING CODE, crawls and uploads instead of dl github files to sync
-    if newscrape:
-        bln_project_files = list_new_bln_project_files(bln_client, bln_project_id)
-        logger.info(f"Most recent files found in BLN project: {bln_project_files}")
+    bln_project_files = list_new_bln_project_files(bln_client, bln_project_id)
+    logger.info(f"Most recent files found in BLN project: {bln_project_files}")
+    
+    logger.info("Crawling doge.gov/savings for new entries:")
+    contract_df, grant_df, property_df, new_data_stats = update_doge_data(bln_client, bln_project_id, bln_project_files)
 
-        contract_df, grant_df, property_df, new_data_stats = update_doge_data(bln_client, bln_project_id, bln_project_files)
+    # save new scrape
+    logger.info("Saving local copies of scraped dataframes:")
+    new_scrape_files = save_doge_data_bln(contract_df, grant_df, property_df, new_data_stats)
 
-        # save new scrape
-        new_scrape_files = save_doge_data_bln(contract_df, grant_df, property_df, new_data_stats)
-
-        if new_scrape_files:
-            uploads = copy_scrape_files_to_bln(
-                scrape_files=new_scrape_files,
-                client=bln_client,
-                project_id=bln_project_id,
-            )
-
-        # delete tmp pre-scrape files
-        delete_tmp_data([*bln_project_files, *new_scrape_files])
-        # delete_tmp_data(new_scrape_files) # TODO: add this? Possibly remake using `with tempfile.TemporaryDirectory() as tmpdir:`
-
-    # ORIGINAL SYNC CODE
-    else:
-        github_files = get_files_with_last_modified(
-            source_repo_owner,
-            source_repo,
-            path=source_data_path,
+    if new_scrape_files:
+        logger.info(f"New files saved, uploading to BLN project: {new_scrape_files}")
+        uploads = copy_scrape_files_to_bln(
+            scrape_files=new_scrape_files,
+            client=bln_client,
+            project_id=bln_project_id,
         )
+        logger.info(f"Files successfully uploaded to BLN project")
 
-        message = (
-            f"Files found in '{source_repo}/{source_data_path}' github: {github_files}"
-        )
-        logger.info(message)
-
-        bln_project_files = list_bln_project_files(bln_client, bln_project_id)
-        logger.info(f"Files found in BLN project: {bln_project_files}")
-
-        new_github_files = get_new_github_files_for_bln(bln_project_files, github_files)
-        file_upload_message = ""
-        failed_uploads = None
-        outcome = None
-
-        if new_github_files:
-            uploads = copy_github_files_to_bln(
-                github_files=new_github_files,
-                client=bln_client,
-                project_id=bln_project_id,
-                slackbot_alerter=SLACK_BOT_INTERNAL_ALERTER,
-            )
+    # delete tmp pre-scrape files
+    delete_tmp_data([*bln_project_files, *new_scrape_files])
+    # delete_tmp_data(new_scrape_files) # TODO: add this? Possibly remake using `with tempfile.TemporaryDirectory() as tmpdir:`
 
     if uploads["success"]:
         success_uploads = uploads["success"]
@@ -441,6 +419,9 @@ def run_pipeline(environment):
     else:
         file_upload_message = f"No new files found."
         outcome = "success"
+
+    logger.info("Deleting temporary data directory: './tmp_data/'")
+    os.removedirs("./tmp_data")
 
     base_final_message = "Process complete."
     final_message = f"{base_final_message} {file_upload_message}"
