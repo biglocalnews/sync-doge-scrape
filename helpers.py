@@ -165,8 +165,23 @@ def list_bln_project_files(client: Client, project_id: str) -> List[Dict[str, st
     return current_files
 
 def list_new_bln_project_files(client: Client, project_id: str) -> List[str]:
+    """
+    List the newest contract, grant, and property files in the BLN DOGE tracker directory.
+
+    Args:
+        client (Client): An initialized BLN API client.
+        project_id (str): The BLN project ID.
+
+    Returns:
+        contract_file, grant_file, property_file: file names of most recent contract, grant, and property/lease CSVs.
+    """
+
+    def _max_dt_file(file_list: List[str], pattern: str):
+        # calling `max()` on strings to get the most recent file i.e. the 'largest' datetime str
+        return max([fn for fn in file_list if pattern in fn])
+
     current_files = list_bln_project_files(client, project_id)
-    contract_file = max([fn for fn in current_files if 'doge-contract' in fn])  # calling `max()` on strings to get the most recent file i.e. the 'largest' datetime str
-    grant_file = max([fn for fn in current_files if 'doge-grant' in fn])
-    property_file = max([fn for fn in current_files if 'doge-property' in fn])
+    contract_file = _max_dt_file(current_files, 'doge-contract')
+    grant_file = _max_dt_file(current_files, 'doge-grant')
+    property_file = _max_dt_file(current_files, 'doge-property')
     return [contract_file, grant_file, property_file]
