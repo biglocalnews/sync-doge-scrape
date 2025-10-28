@@ -1,5 +1,6 @@
 import os
 from datetime import datetime
+import logging
 from time import sleep
 
 import numpy as np
@@ -8,10 +9,21 @@ import requests as req
 import validators
 from bs4 import BeautifulSoup
 from ratelimit import limits, sleep_and_retry
+from pyrate_limiter import Duration, Rate, Limiter, BucketFullException
 from tqdm import tqdm
 
 N_REQ = 10
 LIMIT_S = 3    # 1000 reqs per 300s, or 10 reqs per 3s. Pretty lenient!
+# persec_rate = Rate(N_REQ, LIMIT_S * Duration.SECOND)
+# limiter = Limiter
+
+logging.basicConfig(
+    format="\n%(asctime)s %(levelname)s: %(message)s",
+    level=logging.DEBUG,
+    datefmt="%H:%M:%S",
+)
+logger = logging.getLogger(__name__)
+
 data_key_dict = { # match on the 'id' field
     'award_agency': 'agencyID',
     'award_procurement_id': 'PIID',
@@ -58,27 +70,6 @@ data_key_dict = { # match on the 'id' field
     'performance_zip_ext': 'placeOfPerformanceZIPCode4',
 }
 
-def safe_load_csv(filepath):
-    df = pd.read_csv(filepath) if os.path.exists(filepath) else pd.DataFrame([])
-    if 'uploaded_dt' in df.keys():
-        df['uploaded_dt'] = pd.to_datetime(df['uploaded_dt'])
-    return df
-
-def clean_pre_df(df):
-    df = df.fillna('')
-    return df
-
-def load_pre_data_bln():
-    pass
-
-def load_pre_data():
-    pre_contract_df = safe_load_csv('./data/doge-contract.csv')
-    pre_contract_df = clean_pre_df(pre_contract_df)
-    pre_grant_df = safe_load_csv('./data/doge-grant.csv')
-    pre_grant_df = clean_pre_df(pre_grant_df)
-    pre_property_df = safe_load_csv('./data/doge-property.csv')
-    pre_property_df = clean_pre_df(pre_property_df)
-    return pre_contract_df, pre_grant_df, pre_property_df
 
 @sleep_and_retry
 @limits(calls=N_REQ,period=LIMIT_S)
@@ -87,6 +78,9 @@ def limit_req(url,headers={}):
     if r.status_code != 200:
         raise Exception('API response: {}'.format(r.status_code))
     return r
+
+# def limit_req_2(url, headers={}):
+
 
 def scrape_doge_endpoint(api_root,endpoint_str,params):
     endpoint_json_list = []
@@ -113,12 +107,6 @@ def scrape_doge():
     grant_df = scrape_doge_endpoint(api_root,'grants',params)
     property_df = scrape_doge_endpoint(api_root,'leases',params)
     return contract_df, grant_df, property_df
-
-def dollar_str_to_float(dstr):
-    return float(dstr.replace('$','').replace(',',''))
-
-def area_str_to_int(astr):
-    return int(astr.replace(',',''))
 
 def safe_to_dt(dtstr):
     try:
@@ -189,6 +177,7 @@ def extend_contract_data(contract_df,dt):
                 fpds_df = pd.concat([fpds_df,pd.DataFrame(contract_row_dict,index=[0])],ignore_index=True)
             except:
                 log_row_error('contract',dt,fpds_link)
+                # logger.error()
                 fpds_df = pd.concat([fpds_df,pd.DataFrame([],index=[0])],ignore_index=True)
         else:
             fpds_df = pd.concat([fpds_df,pd.DataFrame([],index=[0])],ignore_index=True)
@@ -214,45 +203,10 @@ def extend_grant_data(grant_df,dt):
             usas_df = pd.concat([usas_df,pd.DataFrame([],index=[0])],ignore_index=True)
     return pd.concat([grant_df.reset_index().drop('index',axis=1),usas_df],axis=1)
 
-def save_doge_data(contract_df, grant_df, property_df, stub_contract_df, stub_grant_df, stub_property_df, data_dir="./data"):
-    contract_df.to_csv(os.path.join(data_dir, 'doge-contract.csv'),index=False)
-    grant_df.to_csv(os.path.join(data_dir, 'doge-grant.csv'),index=False)
-    property_df.to_csv(os.path.join(data_dir, 'doge-property.csv'),index=False)
-    stub_contract_df.to_csv(os.path.join(data_dir, 'doge-contract-stub.csv'),index=False)
-    stub_grant_df.to_csv(os.path.join(data_dir, 'doge-grant-stub.csv'),index=False)
-    stub_property_df.to_csv(os.path.join(data_dir, 'doge-property-stub.csv'),index=False)
-
-def update_doge_data(plat='local',):
-    datetime_scrape = datetime.strftime(datetime.now(),'%Y-%m-%d-%H%M')
-    print('loading current data...')
-    if plat == 'bln':
-        pre_contract_df, pre_grant_df, pre_property_df = load_pre_data_bln()
-    elif plat == 'local':
-        pre_contract_df, pre_grant_df, pre_property_df = load_pre_data()
-    print('scraping new data...')
-    stub_contract_df, stub_grant_df, stub_property_df = scrape_doge()
-    stub_contract_df, stub_grant_df, stub_property_df = [clean_stub_df(df) for df in [stub_contract_df, stub_grant_df, stub_property_df]]
-    print('finding new and changed entries...')
-    (new_contract_df, contract_drop_idx), (new_grant_df, grant_drop_idx), (new_property_df, property_drop_idx) = [
-        df_row_diff_2(pre_df,stub_df) for pre_df, stub_df in zip(
-            [pre_contract_df,pre_grant_df,pre_property_df],[stub_contract_df, stub_grant_df, stub_property_df]
-        )
-    ] # dropped idx values are for debugging and tracking erroneously ejected "duplicate" entries.
-    print('extending contract table with FPDS data...')
-    new_contract_df = extend_contract_data(new_contract_df,datetime_scrape)
-    new_contract_df['dt_scrape'] = datetime_scrape
-    contract_df = pd.concat([pre_contract_df,new_contract_df],ignore_index=True)
-    print('extending grant table with USASpending data...')
-    new_grant_df = extend_grant_data(new_grant_df,datetime_scrape)
-    new_grant_df['dt_scrape'] = datetime_scrape
-    grant_df = pd.concat([pre_grant_df,new_grant_df],ignore_index=True)
-    new_property_df['dt_scrape'] = datetime_scrape
-    property_df = pd.concat([pre_property_df,new_property_df],ignore_index=True)
-    return contract_df, grant_df, property_df, stub_contract_df, stub_grant_df, stub_property_df
-
 def main():
-    contract_df, grant_df, property_df, stub_contract_df, stub_grant_df, stub_property_df = update_doge_data()
-    save_doge_data(contract_df, grant_df, property_df, stub_contract_df, stub_grant_df, stub_property_df)
+    # contract_df, grant_df, property_df, stub_contract_df, stub_grant_df, stub_property_df = update_doge_data()
+    # save_doge_data(contract_df, grant_df, property_df, stub_contract_df, stub_grant_df, stub_property_df)
+    pass
 
 if __name__ == '__main__':
     main()

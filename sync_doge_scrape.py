@@ -12,7 +12,7 @@ from bln import Client
 
 from bots.slack_alerts import SlackInternalAlert
 from doge_scrape import scrape_doge, clean_stub_df, df_row_diff_2, extend_contract_data, extend_grant_data
-from helpers import get_last_commit_dates, list_bln_project_files, list_new_bln_project_files, list_github_dir
+from helpers import get_last_commit_dates, list_new_bln_project_files, list_github_dir
 
 logging.basicConfig(
     format="\n%(asctime)s %(levelname)s: %(message)s",
@@ -375,9 +375,6 @@ def run_pipeline(environment):
     bln_api_key = os.environ.get("BLN_API_TOKEN")
     bln_project_id = os.environ.get("BLN_PROJECT_ID")
     bln_client = Client(bln_api_key)
-    source_repo = "doge-scrape"
-    source_repo_owner = "m-nolan"
-    source_data_path = "data"
 
     SLACK_BOT_INTERNAL_ALERTER = SlackInternalAlert("doge-scrape")
     
