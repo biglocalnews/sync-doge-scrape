@@ -4,3 +4,4 @@ slack_sdk==3.35.0
 pandas==2.2.3
 numpy==2.1.2
 tqdm==4.65.0
+pyrate-limiter==3.9.0

@@ -8,8 +8,7 @@ import pandas as pd
 import requests as req
 import validators
 from bs4 import BeautifulSoup
-from ratelimit import limits, sleep_and_retry
-from pyrate_limiter import Duration, Rate, Limiter, BucketFullException
+from pyrate_limiter import Duration, Rate, Limiter
 from tqdm import tqdm
 
 N_REQ = 10
