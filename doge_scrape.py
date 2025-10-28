@@ -14,8 +14,12 @@ from tqdm import tqdm
 
 N_REQ = 10
 LIMIT_S = 3    # 1000 reqs per 300s, or 10 reqs per 3s. Pretty lenient!
-# persec_rate = Rate(N_REQ, LIMIT_S * Duration.SECOND)
-# limiter = Limiter
+persec_rate = Rate(N_REQ, LIMIT_S * Duration.SECOND)
+limiter = Limiter(persec_rate, raise_when_fail=False, max_delay=10*Duration.SECOND)
+limiter_dec = limiter.as_decorator()
+
+def ldmap(*args, **kwargs):
+    return "demo", 1
 
 logging.basicConfig(
     format="\n%(asctime)s %(levelname)s: %(message)s",
@@ -71,16 +75,20 @@ data_key_dict = { # match on the 'id' field
 }
 
 
-@sleep_and_retry
-@limits(calls=N_REQ,period=LIMIT_S)
-def limit_req(url,headers={}):
-    r = req.get(url,headers=headers)
+# @sleep_and_retry
+# @limits(calls=N_REQ,period=LIMIT_S)
+# def limit_req(url,headers={}):
+#     r = req.get(url,headers=headers)
+#     if r.status_code != 200:
+#         raise Exception('API response: {}'.format(r.status_code))
+#     return r
+
+@limiter_dec(ldmap)
+def limit_req(url, headers={}):
+    r = req.get(url, headers=headers)
     if r.status_code != 200:
         raise Exception('API response: {}'.format(r.status_code))
     return r
-
-# def limit_req_2(url, headers={}):
-
 
 def scrape_doge_endpoint(api_root,endpoint_str,params):
     endpoint_json_list = []
