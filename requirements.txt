@@ -5,3 +5,5 @@ pandas==2.2.3
 numpy==2.1.2
 tqdm==4.65.0
 pyrate-limiter==3.9.0
+validators>=0.34
+beautifulsoup4>=4.12.2

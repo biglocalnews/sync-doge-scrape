@@ -235,6 +235,11 @@ def load_pre_data_bln(
     """
 
     # download copies of the existing files
+    if os.path.exists(tmp_dir):
+        pass
+    else:
+        os.makedirs(tmp_dir)
+    
     for project_file in bln_project_files:
         bln_client.download_file(bln_project_id, project_file, output_dir=tmp_dir)
     # load files as dataframes
