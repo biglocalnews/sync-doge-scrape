@@ -1,6 +1,6 @@
 beautifulsoup4==4.14.2
 bln==2.3.11
-numpy==1.24.3
+numpy==2.1.2
 pandas==2.3.3
 pyrate_limiter==3.9.0
 python-dotenv==1.2.1
