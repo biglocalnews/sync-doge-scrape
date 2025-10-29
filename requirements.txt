@@ -1,9 +1,10 @@
+beautifulsoup4==4.14.2
 bln==2.3.11
-dotenv==0.9.9
+numpy==1.24.3
+pandas==2.3.3
+pyrate_limiter==3.9.0
+python-dotenv==1.2.1
+requests==2.32.5
 slack_sdk==3.35.0
-pandas==2.2.3
-numpy==2.1.2
 tqdm==4.65.0
-pyrate-limiter==3.9.0
-validators>=0.34
-beautifulsoup4>=4.12.2
+validators==0.34.0
